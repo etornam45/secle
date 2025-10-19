@@ -4,7 +4,7 @@ export class Tensor {
   data: Float32Array;
   shape: Shape;
   requires_grad: boolean;
-  _grad?: Float32Array;
+  _grad?: Tensor;
   _prev: Tensor[] = [];
   _name?: string;
   _backward?: () => void;
@@ -76,13 +76,13 @@ export class Tensor {
   }
 
 
-  backward(grad?: Float32Array): void {
+  backward(grad?: Tensor): void {
     if (!this.requires_grad) {
       throw new Error("Cannot call backward on a tensor that does not require gradients.");
     }
     if (!grad) {
       if (this.size() !== 1) throw new Error('grad must be provided for non-scalar tensors');
-      grad = new Float32Array(this.data.length).fill(1);
+      grad = Tensor.ones(this.shape, this.requires_grad);
     }
     this._grad = grad;
 
