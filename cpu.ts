@@ -27,7 +27,7 @@ export const CPU = {
       throw new Error(`Tensors must be the same size for addition. Got sizes ${a.size()} and ${b.size()}.`);
     }
 
-    const result = Tensor.zeros([a.shape[0], b.shape[1]]);
+    const result = Tensor.zeros(a.shape);
     for (let i = 0; i < a.size(); i++) {
       result.data[i] = a.data[i] + b.data[i];
     }
@@ -39,7 +39,7 @@ export const CPU = {
       throw new Error(`Tensors must be the same size for subtraction. Got sizes ${a.size()} and ${b.size()}.`);
     }
 
-    const result = Tensor.zeros([a.shape[0], b.shape[1]]);
+    const result = Tensor.zeros(a.shape);
     for (let i = 0; i < a.size(); i++) {
       result.data[i] = a.data[i] - b.data[i];
     }
@@ -51,7 +51,7 @@ export const CPU = {
       throw new Error(`Tensors must be the same size for multiplication. Got sizes ${a.size()} and ${b.size()}.`);
     }
 
-    const result = Tensor.zeros([a.shape[0], b.shape[1]]);
+    const result = Tensor.zeros(a.shape);
     for (let i = 0; i < a.size(); i++) {
       result.data[i] = a.data[i] * b.data[i];
     }
@@ -63,7 +63,7 @@ export const CPU = {
       throw new Error(`Tensors must be the same size for division. Got sizes ${a.size()} and ${b.size()}.`);
     }
 
-    const result = Tensor.zeros([a.shape[0], b.shape[1]]);
+    const result = Tensor.zeros(a.shape);
     for (let i = 0; i < a.size(); i++) {
       result.data[i] = a.data[i] / b.data[i];
     }
