@@ -63,18 +63,6 @@ export class Tensor {
     return `Tensor(shape=[${this.shape}])`;
   }
 
-  _shape(): Shape {
-    return this.shape;
-  }
-
-  _requires_grad(): boolean {
-    return this.requires_grad;
-  }
-
-  _data(): Float32Array {
-    return this.data;
-  }
-
 
   backward(grad?: Tensor): void {
     if (!this.requires_grad) {
