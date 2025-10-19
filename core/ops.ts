@@ -43,7 +43,16 @@ export function sub(a: Tensor, b: Tensor): Tensor {
 }
 
 export function neg(a: Tensor): Tensor {
-  return CPU.neg(a);
+  const out = CPU.neg(a);
+  out._prev = [a];
+  out.requires_grad = a.requires_grad;
+  out._backward = () => {
+    if (!out._grad) return;
+    if (a.requires_grad) {
+      a._grad = a._grad ? add(a._grad, neg(out._grad)) : neg(out._grad);
+    }
+  };
+  return out;
 }
 
 
