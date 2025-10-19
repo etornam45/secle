@@ -5,4 +5,7 @@
  */
 
 export { Tensor } from "./core/tensor.ts"
+export { Module } from "./core/module.ts";
+export { Linear } from "./core/linear.ts";
 export * from "./core/ops.ts";
+export { SGD, type Optimizer } from "./core/optim.ts";
