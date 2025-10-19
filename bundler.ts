@@ -38,10 +38,25 @@ function readFileContent(filePath: string): string {
 
 function resolvePath(importSpecifier: string, fromPath: string): string {
   if (importSpecifier.startsWith("./") || importSpecifier.startsWith("../")) {
-    const base = fromPath.includes("/") ? fromPath.substring(0, fromPath.lastIndexOf("/") + 1) : "./";
-    const resolved = base + importSpecifier.substring(2);
-    // Clean up any double slashes
-    return resolved.replace(/\/+/g, "/");
+    // Get the directory of the fromPath
+    const fromDir = fromPath.includes("/") ? fromPath.substring(0, fromPath.lastIndexOf("/")) : ".";
+    
+    // Handle relative path navigation
+    const parts = importSpecifier.split("/");
+    const result = fromDir.split("/");
+    
+    for (const part of parts) {
+      if (part === "..") {
+        result.pop();
+      } else if (part === ".") {
+        // Stay in current directory
+      } else if (part !== "") {
+        result.push(part);
+      }
+    }
+    
+    const finalPath = result.join("/");
+    return finalPath;
   }
   return importSpecifier;
 }
