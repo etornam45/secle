@@ -7,10 +7,10 @@ export function matmul(a: Tensor, b: Tensor): Tensor {
   out.requires_grad = a.requires_grad || b.requires_grad; // Set requires_grad based on inputs
 
   out._backward = () => {
-    // NOTE: I dont understand this backpropagation logic fully yet
     if (!out._grad) return;
     const [m, n] = out.shape;
     const [, k] = a.shape;
+    
     if (a.requires_grad) {
       const a_grad = Tensor.zeros(a.shape);
       for (let i = 0; i < m; i++) {
@@ -24,15 +24,16 @@ export function matmul(a: Tensor, b: Tensor): Tensor {
       }
       a._grad = a._grad ? addArrays(a._grad, a_grad.data) : a_grad.data;
     }
+    
     if (b.requires_grad) {
       const b_grad = Tensor.zeros(b.shape);
-      for (let i = 0; i < m; i++) {
-        for (let j = 0; j < k; j++) {
+      for (let i = 0; i < k; i++) {
+        for (let j = 0; j < n; j++) {
           let sum = 0;
-          for (let p = 0; p < n; p++) {
-            sum += out._grad[i * n + p] * a.data[j * n + p];
+          for (let p = 0; p < m; p++) {
+            sum += out._grad[p * n + j] * a.data[p * k + i];
           }
-          b_grad.data[j * k + i] = sum;
+          b_grad.data[i * n + j] = sum;
         }
       }
       b._grad = b._grad ? addArrays(b._grad, b_grad.data) : b_grad.data;
