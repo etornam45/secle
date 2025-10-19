@@ -1,4 +1,4 @@
-import { Tensor } from "./tensor.ts";
+import { Tensor } from "../tensor.ts";
 
 export const CPU = {
   name: "cpu",
@@ -66,6 +66,14 @@ export const CPU = {
     const result = Tensor.zeros(a.shape);
     for (let i = 0; i < a.size(); i++) {
       result.data[i] = a.data[i] / b.data[i];
+    }
+    return result;
+  },
+
+  neg: (a: Tensor): Tensor => {
+    const result = Tensor.zeros(a.shape);
+    for (let i = 0; i < a.size(); i++) {
+      result.data[i] = -a.data[i];
     }
     return result;
   },
