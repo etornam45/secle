@@ -38,8 +38,10 @@ function readFileContent(filePath: string): string {
 
 function resolvePath(importSpecifier: string, fromPath: string): string {
   if (importSpecifier.startsWith("./") || importSpecifier.startsWith("../")) {
-    const base = fromPath.substring(0, fromPath.lastIndexOf("/") + 1);
-    return base + importSpecifier.substring(2);
+    const base = fromPath.includes("/") ? fromPath.substring(0, fromPath.lastIndexOf("/") + 1) : "./";
+    const resolved = base + importSpecifier.substring(2);
+    // Clean up any double slashes
+    return resolved.replace(/\/+/g, "/");
   }
   return importSpecifier;
 }
