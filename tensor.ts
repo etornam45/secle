@@ -14,6 +14,9 @@ export class Tensor {
     shape: Shape,
     requires_grad: boolean = false,
   ) {
+    if (data.length !== shape.reduce((a, b) => a * b, 1)) {
+      throw new Error(`Data length ${data.length} does not match shape ${shape.join(", ")}.`);
+    }
     if (data instanceof Float32Array) {
       this.data = data;
     } else {
@@ -38,8 +41,26 @@ export class Tensor {
     return new Tensor(data, shape, requires_grad);
   }
 
+  static randn(shape: Shape, requires_grad: boolean = false): Tensor {
+    const size = shape.reduce((a, b) => a * b, 1);
+    function randomNormal(size: number): Float32Array {
+      const data = new Float32Array(size);
+      for (let i = 0; i < size; i++) {
+        // Box-Muller transform for normal distribution
+        const u1 = Math.random();
+        const u2 = Math.random();
+        const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        data[i] = z0;
+      }
+      return data;
+    }
+    const data = randomNormal(size);
+    return new Tensor(data, shape, requires_grad);
+  }
+
   toString(): string {
-    return `Tensor(shape=${this.shape}, data=[${Array.from(this.data).join(", ")}])`;
+    // return `Tensor(shape=${this.shape}, data=[${Array.from(this.data.slice(0, 3)).join(", ")}...])`;
+    return `Tensor(shape=[${this.shape}])`;
   }
 
   _shape(): Shape {
