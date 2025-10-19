@@ -4,5 +4,5 @@
  *  License: MIT
  */
 
-export { Tensor } from "./tensor.ts";
-export * from "./ops.ts";
+export { Tensor } from "./core/tensor.ts"
+export * from "./core/ops.ts";
