@@ -1,4 +1,5 @@
 export type Shape = number[];
+export type Device = "webgpu" | "cpu"
 
 export class Tensor {
   data: Float32Array;
@@ -9,10 +10,13 @@ export class Tensor {
   _name?: string;
   _backward?: () => void;
 
+  device: Device = "cpu"
+
   constructor(
     data: Float32Array | number[],
     shape: Shape,
     requires_grad: boolean = false,
+    device: Device = "cpu"
   ) {
     if (data.length !== shape.reduce((a, b) => a * b, 1)) {
       throw new Error(`Data length ${data.length} does not match shape ${shape.join(", ")}.`);
@@ -24,24 +28,25 @@ export class Tensor {
     }
     this.shape = shape;
     this.requires_grad = requires_grad;
+    this.device = device
   }
 
-  static fromArray(arr: number[], shape: Shape, requires_grad: boolean = false): Tensor {
-    return new Tensor(arr, shape, requires_grad);
+  static fromArray(arr: number[], shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
+    return new Tensor(arr, shape, requires_grad, device);
   }
 
-  static zeros(shape: Shape, requires_grad: boolean = false): Tensor {
+  static zeros(shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
     const size = shape.reduce((a, b) => a * b, 1);
-    return new Tensor(new Float32Array(size), shape, requires_grad);
+    return new Tensor(new Float32Array(size), shape, requires_grad, device);
   }
 
-  static ones(shape: Shape, requires_grad: boolean = false): Tensor {
+  static ones(shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
     const size = shape.reduce((a, b) => a * b, 1);
     const data = new Float32Array(size).fill(1);
-    return new Tensor(data, shape, requires_grad);
+    return new Tensor(data, shape, requires_grad, device);
   }
 
-  static randn(shape: Shape, requires_grad: boolean = false): Tensor {
+  static randn(shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
     const size = shape.reduce((a, b) => a * b, 1);
     function randomNormal(size: number): Float32Array {
       const data = new Float32Array(size);
@@ -55,7 +60,7 @@ export class Tensor {
       return data;
     }
     const data = randomNormal(size);
-    return new Tensor(data, shape, requires_grad);
+    return new Tensor(data, shape, requires_grad, device);
   }
 
   toString(): string {
@@ -107,7 +112,7 @@ export class Tensor {
       throw new Error("Transpose is only implemented for 2D tensors.");
     }
     const [rows, cols] = this.shape;
-    const result = Tensor.zeros([cols, rows], this.requires_grad);
+    const result = Tensor.zeros([cols, rows], this.requires_grad, this.device);
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
         result.data[j * rows + i] = this.data[i * cols + j];
@@ -118,5 +123,10 @@ export class Tensor {
 
   zero_grad() {
     this._grad?.data.fill(0)
+  }
+
+  item(): number {
+    if (this.data.length !== 1) throw new Error(`Tensor is not scalar. Got Shape(${this.shape}) and Lenght(${this.data.length})`);
+    return this.data[0];
   }
 }
