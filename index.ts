@@ -4,8 +4,9 @@
  *  License: MIT
  */
 
+
 export { Tensor } from "./core/tensor.ts"
-export { Module } from "./core/module.ts";
-export { Linear } from "./core/linear.ts";
+export * from "./core/modules/index.ts"
 export * from "./core/ops.ts";
+export * as plot from "./plot.ts"
 export { SGD, type Optimizer } from "./core/optim.ts";
