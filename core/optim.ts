@@ -21,7 +21,7 @@ export class SGD implements Optimizer {
   zero_grad(): void {
     for (const parameter of this.parameters) {
       if (parameter._grad) {
-        parameter._grad.data.fill(0);
+        parameter.zero_grad(); // <Tensor.zero_grad()>
       }
     }
   }

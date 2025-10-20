@@ -115,4 +115,8 @@ export class Tensor {
     }
     return result;
   }
+
+  zero_grad() {
+    this._grad?.data.fill(0)
+  }
 }
