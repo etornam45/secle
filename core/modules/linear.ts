@@ -1,6 +1,6 @@
-import { Tensor } from "./tensor.ts";
-import { Module } from "./module.ts";
-import { matmul, add } from "./ops.ts";
+import { Tensor } from "../tensor.ts";
+import { Module } from "../modules/module.ts";
+import { matmul, add } from "../ops.ts";
 
 
 /**

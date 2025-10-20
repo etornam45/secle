@@ -1,4 +1,4 @@
-import { Tensor } from "./tensor.ts";
+import { Tensor } from "../tensor.ts";
 
 export class Module {
   _name?: string;
