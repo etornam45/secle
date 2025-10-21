@@ -2,7 +2,7 @@ import { Tensor } from "../tensor.ts";
 
 export const CPU = {
   name: "cpu",
-
+  is_available: (): boolean => true,
   matmul: (a: Tensor, b: Tensor): Tensor => {
     if (a.shape.length !== 2 || b.shape.length !== 2) {
       throw new Error("Both tensors must be 2-dimensional for matmul." + " Got shapes " + a.shape + " and " + b.shape);
