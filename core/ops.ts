@@ -59,10 +59,30 @@ export function neg(a: Tensor): Tensor {
 export function mul(a: Tensor | number, b: Tensor | number): Tensor {
 
   if (typeof a === "number" && b instanceof Tensor) {
-    return CPU.mul_scalar(b, a);
+    const out = CPU.mul_scalar(b, a);
+    out._prev = [b];
+    out.requires_grad = b.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (b.requires_grad) {
+        const b_grad = mul(out._grad, a);
+        b._grad = b._grad ? add(b._grad, b_grad) : b_grad;
+      }
+    };
+    return out;
   }
   if (typeof b === "number" && a instanceof Tensor) {
-    return CPU.mul_scalar(a, b);
+    const out = CPU.mul_scalar(a, b);
+    out._prev = [a];
+    out.requires_grad = a.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (a.requires_grad) {
+        const a_grad = mul(out._grad, b);
+        a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
+      }
+    };
+    return out;
   }
 
   if (a instanceof Tensor && b instanceof Tensor) {
@@ -73,7 +93,7 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
     out._backward = () => {
       if (!out._grad) return;
       if (a.requires_grad) {
-        const a_grad = mul(a, out._grad);
+        const a_grad = mul(out._grad, b);
         a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
       }
       if (b.requires_grad) {
@@ -94,10 +114,28 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
 
 export function add(a: Tensor | number, b: Tensor | number): Tensor {
   if (typeof a === "number" && b instanceof Tensor) {
-    return CPU.add_a_number(b, a);
+    const out = CPU.add_a_number(b, a);
+    out._prev = [b];
+    out.requires_grad = b.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (b.requires_grad) {
+        b._grad = b._grad ? add(b._grad, out._grad) : out._grad;
+      }
+    };
+    return out;
   }
   if (typeof b === "number" && a instanceof Tensor) {
-    return CPU.add_a_number(a, b);
+    const out = CPU.add_a_number(a, b);
+    out._prev = [a];
+    out.requires_grad = a.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (a.requires_grad) {
+        a._grad = a._grad ? add(a._grad, out._grad) : out._grad;
+      }
+    };
+    return out;
   }
 
   if (a instanceof Tensor && b instanceof Tensor) {
@@ -190,7 +228,14 @@ export function relu(a: Tensor): Tensor {
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
-      a._grad = a._grad ? add(a._grad, relu(out._grad)) : relu(out._grad);
+      // ReLU gradient: 1 if input > 0, 0 otherwise
+      const mask = new Tensor(
+        new Float32Array(a.data.map(x => x > 0 ? 1 : 0)),
+        a.shape,
+        a.requires_grad
+      );
+      const a_grad = mul(out._grad, mask);
+      a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
     }
   };
   return out;
@@ -203,7 +248,11 @@ export function sigmoid(a: Tensor): Tensor {
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
-      a._grad = a._grad ? add(a._grad, sigmoid(out._grad)) : sigmoid(out._grad);
+      // Sigmoid gradient: σ(x) * (1 - σ(x)) * out_grad
+      const ones = Tensor.ones(out.shape, out.requires_grad);
+      const sigmoid_derivative = mul(out, sub(ones, out));
+      const a_grad = mul(out._grad, sigmoid_derivative);
+      a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
     }
   };
   return out;
