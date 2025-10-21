@@ -72,4 +72,8 @@ export class Module {
     }
     return summary.trim();
   }
+
+  get parameters_count(): number {
+    return this.parameters.map(p => p.size()).reduce((a, b) => a + b, 0);
+  }
 }
