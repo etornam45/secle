@@ -12,6 +12,9 @@ export class Tensor {
 
   device: Device = "cpu"
 
+  _data_buffer?: GPUBuffer
+  _grad_buffer?: GPUBuffer
+
   constructor(
     data: Float32Array | number[],
     shape: Shape,
@@ -83,9 +86,8 @@ export class Tensor {
     const topo: Tensor[] = [];
     const visited = new Set<Tensor>();
     const buildTopo = (tensor: Tensor) => {
-      if (!visited.has(tensor)) {
-        visited.add(tensor);
-      }
+      if (visited.has(tensor)) return;
+      visited.add(tensor);
       for (const child of tensor._prev) {
         buildTopo(child);
       }
@@ -122,7 +124,10 @@ export class Tensor {
   }
 
   zero_grad() {
-    this._grad?.data.fill(0)
+    if (this._grad) {
+      this._grad.data.fill(0);
+      this._grad = undefined;
+    }
   }
 
   item(): number {
