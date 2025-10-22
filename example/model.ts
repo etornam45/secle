@@ -2,29 +2,35 @@ import * as nn from "../index.ts";
 import { SGD } from "../core/optim.ts";
 
 class Model extends nn.Module {
-  linear: nn.Linear;
-  linear2: nn.Linear;
+  seq: nn.Sequencial;
+  
 
-  constructor(input_size: number, output_size: number) {
+  constructor(input_size: number, output_size: number, hidden_dim = 10) {
     super();
-    this.linear = new nn.Linear(input_size, 10);
-    this.linear2 = new nn.Linear(10, output_size);
-    this.register_parameters([this.linear, this.linear2]);
+    this.seq = new nn.Sequencial([
+      new nn.Linear(input_size, hidden_dim),
+      new nn.Relu(),
+      new nn.Linear(hidden_dim, hidden_dim),
+      new nn.Relu(),
+      new nn.Linear(hidden_dim, output_size)
+    ])
+    this.register_parameters([this.seq]);
   }
 
   override forward(x: nn.Tensor): nn.Tensor {
-    return this.linear2.$(this.linear.$(x));
+    return this.seq.$(x);
   }
 }
 
-// Simple linear data y = 2x + 1. Range of x is [-10, 10].
+// Simple linear data y = sin(x). Range of x is [-10, 10].
 // create the data and put it in a tensor
 
 function create_data(start: number, end: number, num_points: number): { x: nn.Tensor, y: nn.Tensor }[] {
   const data = [];
   for (let i = 0; i < num_points; i++) {
     const x = nn.Tensor.fromArray([start + (end - start) * i / (num_points - 1)], [1, 1], false); // Input data shouldn't require gradients
-    const y = nn.add(nn.mul(x, 2), 1);
+    // sin(x)
+    const y = new nn.Tensor([Math.sin(x.data[0])], [1, 1], false);
     data.push({ x: x, y: y });
   }
   return data;
@@ -38,14 +44,14 @@ console.log(data[0].y.shape);
 
 const model = new Model(1, 1);
 const optimizer = new SGD(model.parameters, 0.001);
-
+const criterion = nn.MSELoss()
 let old_parameters = snapshot_params(model.parameters);
 
 for (let i = 0; i < 100; i++) {
   let epoch_loss: number[] = [];
   for (const { x, y } of data) {
     const output = model.$(x);
-    const loss = nn.mean(nn.pow(nn.sub(output, y), 2));
+    const loss = criterion(output, y);
     loss.backward();
     optimizer.step();
     epoch_loss.push(loss.data[0]);
