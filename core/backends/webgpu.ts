@@ -75,7 +75,7 @@ export const WebGPU = {
       });
     }
     return tensor._grad_buffer;
-  },  
+  },
 
   createShaderModule(code: string): GPUShaderModule {
     const device = this.getDevice();
@@ -105,7 +105,7 @@ export const WebGPU = {
     const device = this.getDevice();
     const arr = values instanceof Uint32Array ? values : new Uint32Array(values);
     const buffer = device.createBuffer({
-      label: `uniform-${Math.random().toString(36).slice(2,8)}`,
+      label: `uniform-${Math.random().toString(36).slice(2, 8)}`,
       size: Math.max(4, arr.byteLength),
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       mappedAtCreation: true,
@@ -116,6 +116,7 @@ export const WebGPU = {
     return buffer;
   },
 
+  // Create a bind group layout for operations with two input buffers (a, b), one output buffer (out), and one uniform buffer (n)
   createBindGroupLayoutForABOutUniform(): GPUBindGroupLayout {
     const device = this.getDevice();
     return device.createBindGroupLayout({
@@ -128,7 +129,7 @@ export const WebGPU = {
     });
   },
 
-  matmul (a: Tensor, b: Tensor): Tensor {
+  matmul(a: Tensor, b: Tensor): Tensor {
     if (a.shape.length !== 2 || b.shape.length !== 2) {
       throw new Error("Both tensors must be 2-dimensional for matmul.");
     }
@@ -209,10 +210,57 @@ export const WebGPU = {
     pass.dispatchWorkgroups(groups);
     pass.end();
     this.getQueue().submit([encoder.finish()]);
-
+    
     return out;
   },
 
+  add_a_number(a: Tensor, b: number): Tensor {
+    const out = Tensor.zeros(a.shape, a.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.add_a_number);
+    const bindGroupLayout = this.getDevice().createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ]
+    });
+    
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+    const scalarBuf = this.getDevice().createBuffer({
+      label: `scalar-uniform-${Math.random().toString(36).slice(2, 8)}`,
+      size: 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    this.getDevice().queue.writeBuffer(scalarBuf, 0, new Float32Array([b]));
+    const n = this.createUniformBufferFromU32([a.size()]);
+
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: scalarBuf } },
+        { binding: 2, resource: { buffer: outBuf } },
+        { binding: 3, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.dispatchWorkgroups(Math.ceil(a.size() / 256));
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
   relu(a: Tensor): Tensor {
     const out = Tensor.zeros(a.shape, a.requires_grad, "webgpu");
     const aBuf = this.getDataBuffer(a);
@@ -293,6 +341,356 @@ export const WebGPU = {
     this.getQueue().submit([encoder.finish()]);
 
     return out;
-  }
+  },
+
+  sub(a: Tensor, b: Tensor): Tensor {
+    if (a.size() !== b.size()) {
+      throw new Error(`Tensors must be the same size for addition. Got sizes ${a.size()} and ${b.size()}.`);
+    }
+    const out = Tensor.zeros(a.shape, a.requires_grad || b.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const bBuf = this.getDataBuffer(b);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.sub);
+    const bindGroupLayout = this.createBindGroupLayoutForABOutUniform();
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: bBuf } },
+        { binding: 2, resource: { buffer: outBuf } },
+        { binding: 3, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+    
+    return out;
+  },
+
+  mul(a: Tensor, b: Tensor): Tensor {
+    if (a.size() !== b.size()) {
+      throw new Error(`Tensors must be the same size for multiplication. Got sizes ${a.size()} and ${b.size()}.`);
+    }
+    const out = Tensor.zeros(a.shape, a.requires_grad || b.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const bBuf = this.getDataBuffer(b);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.mul);
+    const bindGroupLayout = this.createBindGroupLayoutForABOutUniform();
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: bBuf } },
+        { binding: 2, resource: { buffer: outBuf } },
+        { binding: 3, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
+
+  mul_scalar(a: Tensor, b: number): Tensor {
+    const out = Tensor.zeros(a.shape, a.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.mul_scalar);
+    const bindGroupLayout = this.getDevice().createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ]
+    });
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const scalarBuf = this.getDevice().createBuffer({
+      label: `scalar-uniform-${Math.random().toString(36).slice(2, 8)}`,
+      size: 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true,
+    });
+    new Float32Array(scalarBuf.getMappedRange()).set([b]);
+    scalarBuf.unmap();
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: scalarBuf } },
+        { binding: 2, resource: { buffer: outBuf } },
+        { binding: 3, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
+
+  neg(a: Tensor): Tensor {
+    const out = Tensor.zeros(a.shape, a.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.neg);
+    const bindGroupLayout = this.getDevice().createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ]
+    });
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: outBuf } },
+        { binding: 2, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
+
+  sum(a: Tensor): Tensor {
+    const out = Tensor.zeros([1, 1], a.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.sum);
+    const bindGroupLayout = this.getDevice().createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ]
+    });
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: outBuf } },
+        { binding: 2, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
+
+  mean(a: Tensor): Tensor {
+    const sumTensor = this.sum(a);
+    const meanValue = this.mul_scalar(sumTensor, 1 / a.size());
+    return meanValue;
+  },
+
+  pow(a: Tensor, b: number): Tensor {
+    const out = Tensor.zeros(a.shape, a.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.pow);
+    const bindGroupLayout = this.getDevice().createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ]
+    });
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const powerBuf = this.getDevice().createBuffer({
+      label: `power-uniform-${Math.random().toString(36).slice(2, 8)}`,
+      size: 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true,
+    });
+    new Float32Array(powerBuf.getMappedRange()).set([b]);
+    powerBuf.unmap(); // Move to GPU
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: powerBuf } },
+        { binding: 2, resource: { buffer: outBuf } },
+        { binding: 3, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
+
+  div(a: Tensor, b: Tensor): Tensor {
+    const out = Tensor.zeros(a.shape, a.requires_grad || b.requires_grad, "webgpu")
+    const aBuf = this.getDataBuffer(a);
+    const bBuf = this.getDataBuffer(b);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.div);
+    const bindGroupLayout = this.createBindGroupLayoutForABOutUniform();
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+    
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: bBuf } },
+        { binding: 2, resource: { buffer: outBuf } },
+        { binding: 3, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
+
+  tanh(a: Tensor): Tensor {
+    const out = Tensor.zeros(a.shape, a.requires_grad, "webgpu");
+    const aBuf = this.getDataBuffer(a);
+    const outBuf = this.getDataBuffer(out);
+
+    const module = this.createShaderModule(ShaderCode.tanh);
+    const bindGroupLayout = this.getDevice().createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ]
+    });
+    const pipeline = this.getDevice().createComputePipeline({
+      layout: this.getDevice().createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+      compute: { module: module, entryPoint: "main" },
+    });
+
+    const n = this.createUniformBufferFromU32([a.size()]);
+    const bindGroup = this.getDevice().createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: aBuf } },
+        { binding: 1, resource: { buffer: outBuf } },
+        { binding: 2, resource: { buffer: n } },
+      ],
+    });
+
+    const encoder = this.getDevice().createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    const wg = 256;
+    const groups = Math.ceil(a.size() / wg);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+    this.getQueue().submit([encoder.finish()]);
+
+    return out;
+  },
 }
 
