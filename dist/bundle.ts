@@ -1,4 +1,5 @@
 export type Shape = number[];
+export type Device = "webgpu" | "cpu"
 
 export class Tensor {
   data: Float32Array;
@@ -9,10 +10,16 @@ export class Tensor {
   _name?: string;
   _backward?: () => void;
 
+  device: Device = "cpu"
+
+  _data_buffer?: GPUBuffer
+  _grad_buffer?: GPUBuffer
+
   constructor(
     data: Float32Array | number[],
     shape: Shape,
     requires_grad: boolean = false,
+    device: Device = "cpu"
   ) {
     if (data.length !== shape.reduce((a, b) => a * b, 1)) {
       throw new Error(`Data length ${data.length} does not match shape ${shape.join(", ")}.`);
@@ -24,24 +31,25 @@ export class Tensor {
     }
     this.shape = shape;
     this.requires_grad = requires_grad;
+    this.device = device
   }
 
-  static fromArray(arr: number[], shape: Shape, requires_grad: boolean = false): Tensor {
-    return new Tensor(arr, shape, requires_grad);
+  static fromArray(arr: number[], shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
+    return new Tensor(arr, shape, requires_grad, device);
   }
 
-  static zeros(shape: Shape, requires_grad: boolean = false): Tensor {
+  static zeros(shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
     const size = shape.reduce((a, b) => a * b, 1);
-    return new Tensor(new Float32Array(size), shape, requires_grad);
+    return new Tensor(new Float32Array(size), shape, requires_grad, device);
   }
 
-  static ones(shape: Shape, requires_grad: boolean = false): Tensor {
+  static ones(shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
     const size = shape.reduce((a, b) => a * b, 1);
     const data = new Float32Array(size).fill(1);
-    return new Tensor(data, shape, requires_grad);
+    return new Tensor(data, shape, requires_grad, device);
   }
 
-  static randn(shape: Shape, requires_grad: boolean = false): Tensor {
+  static randn(shape: Shape, requires_grad: boolean = false, device: Device = "cpu"): Tensor {
     const size = shape.reduce((a, b) => a * b, 1);
     function randomNormal(size: number): Float32Array {
       const data = new Float32Array(size);
@@ -55,7 +63,7 @@ export class Tensor {
       return data;
     }
     const data = randomNormal(size);
-    return new Tensor(data, shape, requires_grad);
+    return new Tensor(data, shape, requires_grad, device);
   }
 
   toString(): string {
@@ -78,9 +86,8 @@ export class Tensor {
     const topo: Tensor[] = [];
     const visited = new Set<Tensor>();
     const buildTopo = (tensor: Tensor) => {
-      if (!visited.has(tensor)) {
-        visited.add(tensor);
-      }
+      if (visited.has(tensor)) return;
+      visited.add(tensor);
       for (const child of tensor._prev) {
         buildTopo(child);
       }
@@ -107,13 +114,25 @@ export class Tensor {
       throw new Error("Transpose is only implemented for 2D tensors.");
     }
     const [rows, cols] = this.shape;
-    const result = Tensor.zeros([cols, rows], this.requires_grad);
+    const result = Tensor.zeros([cols, rows], this.requires_grad, this.device);
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
         result.data[j * rows + i] = this.data[i * cols + j];
       }
     }
     return result;
+  }
+
+  zero_grad() {
+    if (this._grad) {
+      this._grad.data.fill(0);
+      this._grad = undefined;
+    }
+  }
+
+  item(): number {
+    if (this.data.length !== 1) throw new Error(`Tensor is not scalar. Got Shape(${this.shape}) and Lenght(${this.data.length})`);
+    return this.data[0];
   }
 }
 export class Module {
@@ -184,10 +203,14 @@ export class Module {
     }
     return summary.trim();
   }
+
+  get parameters_count(): number {
+    return this.parameters.map(p => p.size()).reduce((a, b) => a + b, 0);
+  }
 }
 export const CPU = {
   name: "cpu",
-
+  is_available: (): boolean => true,
   matmul: (a: Tensor, b: Tensor): Tensor => {
     if (a.shape.length !== 2 || b.shape.length !== 2) {
       throw new Error("Both tensors must be 2-dimensional for matmul." + " Got shapes " + a.shape + " and " + b.shape);
@@ -378,10 +401,30 @@ export function neg(a: Tensor): Tensor {
 export function mul(a: Tensor | number, b: Tensor | number): Tensor {
 
   if (typeof a === "number" && b instanceof Tensor) {
-    return CPU.mul_scalar(b, a);
+    const out = CPU.mul_scalar(b, a);
+    out._prev = [b];
+    out.requires_grad = b.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (b.requires_grad) {
+        const b_grad = mul(out._grad, a);
+        b._grad = b._grad ? add(b._grad, b_grad) : b_grad;
+      }
+    };
+    return out;
   }
   if (typeof b === "number" && a instanceof Tensor) {
-    return CPU.mul_scalar(a, b);
+    const out = CPU.mul_scalar(a, b);
+    out._prev = [a];
+    out.requires_grad = a.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (a.requires_grad) {
+        const a_grad = mul(out._grad, b);
+        a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
+      }
+    };
+    return out;
   }
 
   if (a instanceof Tensor && b instanceof Tensor) {
@@ -392,7 +435,7 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
     out._backward = () => {
       if (!out._grad) return;
       if (a.requires_grad) {
-        const a_grad = mul(a, out._grad);
+        const a_grad = mul(out._grad, b);
         a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
       }
       if (b.requires_grad) {
@@ -413,10 +456,28 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
 
 export function add(a: Tensor | number, b: Tensor | number): Tensor {
   if (typeof a === "number" && b instanceof Tensor) {
-    return CPU.add_a_number(b, a);
+    const out = CPU.add_a_number(b, a);
+    out._prev = [b];
+    out.requires_grad = b.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (b.requires_grad) {
+        b._grad = b._grad ? add(b._grad, out._grad) : out._grad;
+      }
+    };
+    return out;
   }
   if (typeof b === "number" && a instanceof Tensor) {
-    return CPU.add_a_number(a, b);
+    const out = CPU.add_a_number(a, b);
+    out._prev = [a];
+    out.requires_grad = a.requires_grad;
+    out._backward = () => {
+      if (!out._grad) return;
+      if (a.requires_grad) {
+        a._grad = a._grad ? add(a._grad, out._grad) : out._grad;
+      }
+    };
+    return out;
   }
 
   if (a instanceof Tensor && b instanceof Tensor) {
@@ -509,7 +570,14 @@ export function relu(a: Tensor): Tensor {
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
-      a._grad = a._grad ? add(a._grad, relu(out._grad)) : relu(out._grad);
+      
+      const mask = new Tensor(
+        new Float32Array(a.data.map(x => x > 0 ? 1 : 0)),
+        a.shape,
+        a.requires_grad
+      );
+      const a_grad = mul(out._grad, mask);
+      a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
     }
   };
   return out;
@@ -522,10 +590,24 @@ export function sigmoid(a: Tensor): Tensor {
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
-      a._grad = a._grad ? add(a._grad, sigmoid(out._grad)) : sigmoid(out._grad);
+      
+      const ones = Tensor.ones(out.shape, out.requires_grad);
+      const sigmoid_derivative = mul(out, sub(ones, out));
+      const a_grad = mul(out._grad, sigmoid_derivative);
+      a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
     }
   };
   return out;
+}
+export class Sigmoid extends Module {
+  constructor() {
+    super()
+    
+  }
+
+  override forward(_input: Tensor): Tensor {
+    return sigmoid(_input)
+  }
 }
 
 export class Linear extends Module {
@@ -549,6 +631,16 @@ export class Linear extends Module {
 export function linear(x: Tensor, weights: Tensor, bias: Tensor): Tensor {
   return add(matmul(x, weights), bias);
 }
+export interface LossFunction {
+  (output: Tensor, y: Tensor): Tensor;
+}
+
+export function MSELoss(): LossFunction {
+  function criterion(output: Tensor, y: Tensor): Tensor {
+    return mean(pow(sub(output, y), 2))
+  }
+  return criterion
+}
 export interface Optimizer {
   zero_grad(): void;
   step(): void;
@@ -558,28 +650,50 @@ export class SGD implements Optimizer {
   private readonly parameters: Tensor[];
   private readonly learningRate: number;
   private readonly momentum: number;
+  private readonly maxGradNorm: number;
   
   private readonly velocities: Map<Tensor, Float32Array> = new Map();
 
-  constructor(parameters: Tensor[], learningRate: number, momentum: number = 0) {
+  constructor(parameters: Tensor[], learningRate: number, momentum: number = 0, maxGradNorm: number = 1.0) {
     this.parameters = parameters;
     this.learningRate = learningRate;
     this.momentum = momentum;
+    this.maxGradNorm = maxGradNorm;
   }
 
   zero_grad(): void {
     for (const parameter of this.parameters) {
-      if (parameter._grad) {
-        parameter._grad.data.fill(0);
-      }
+      parameter.zero_grad()
     }
   }
 
   step(): void {
+    
+    let totalNorm = 0;
+    for (const parameter of this.parameters) {
+      if (!parameter._grad) continue;
+      const grad = parameter._grad.data;
+      for (let i = 0; i < grad.length; i++) {
+        totalNorm += grad[i] * grad[i];
+      }
+    }
+    totalNorm = Math.sqrt(totalNorm);
+
+    
+    const clipCoeff = this.maxGradNorm / (totalNorm + 1e-8);
+    const shouldClip = totalNorm > this.maxGradNorm;
+
     for (const parameter of this.parameters) {
       if (!parameter._grad) continue;
       const grad = parameter._grad.data;
       const paramData = parameter.data;
+      
+      if (shouldClip) {
+        
+        for (let i = 0; i < grad.length; i++) {
+          grad[i] *= clipCoeff;
+        }
+      }
       
       if (this.momentum > 0) {
         let velocity = this.velocities.get(parameter);
@@ -596,12 +710,46 @@ export class SGD implements Optimizer {
       } else {
         
         for (let i = 0; i < paramData.length; i++) {
-          let t = `${paramData[i]} -= ${this.learningRate} * ${grad[i]}`;
           paramData[i] -= this.learningRate * grad[i];
-          t += ` = ${paramData[i]}`;
-          
         }
       }
     }
   }
 }
+
+
+
+
+export * as plot from "./plot.ts"
+export class Sequencial extends Module {
+  modules: Module[] = [];
+  constructor(modules: Module[]) {
+    super()
+    this.modules = modules
+    this.register_parameters(this.modules)
+  }
+
+  override forward(_input: Tensor): Tensor {
+    let res: Tensor = _input
+    for (let i = 0; i < this.modules.length; i++) {
+      res = this.modules[i].$(res)
+    }
+    return res
+  }
+}
+export class Relu extends Module {
+  constructor() {
+    super()
+    
+  }
+
+  override forward(_input: Tensor): Tensor {
+    return relu(_input)
+  }
+}
+
+
+
+
+
+export * as plot from "./plot.ts"
