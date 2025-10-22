@@ -1,327 +1,347 @@
-// Enhanced SVG Plotting Library - Replot
-// This code is AI-generated and may not work as expected 
-// I'll Add a better version later 
-
-export type Point = {
+type Point = {
   x: number;
   y: number;
+};
+
+type PlotType = "line" | "bar" | "scatter";
+
+interface PlotStyle {
+  strokeColor?: string;
+  strokeWidth?: number;
+  fillColor?: string;
+  pointRadius?: number;
 }
 
-export type PlotType = "line" | "bar" | "scatter";
-export type AxisType = "linear" | "logarithmic";
-
-export interface Plot {
+interface Plot {
   type: PlotType;
   points: Point[];
-  color?: string;
-  width?: number;
+  style?: PlotStyle;
   label?: string;
-  fill?: string;
-  opacity?: number;
 }
 
-export interface AxisConfig {
-  type: AxisType;
-  label?: string;
-  min?: number;
-  max?: number;
+interface ReplotConfig {
+  width?: number;
+  height?: number;
+  padding?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  backgroundColor?: string;
   showGrid?: boolean;
-  gridColor?: string;
+  showAxes?: boolean;
+  title?: string;
+  xLabel?: string;
+  yLabel?: string;
+}
+
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
 }
 
 export class Replot {
-  private plots: Plot[] = [];
-  private title: string = "";
-  private xAxis: AxisConfig = { type: "linear", showGrid: true, gridColor: "#e0e0e0" };
-  private yAxis: AxisConfig = { type: "linear", showGrid: true, gridColor: "#e0e0e0" };
+  plots: Plot[] = [];
+  width: number;
+  height: number;
+  padding: number;
+  strokeColor: string;
+  strokeWidth: number;
+  backgroundColor: string;
+  showGrid: boolean;
+  showAxes: boolean;
+  title?: string;
+  xLabel?: string;
+  yLabel?: string;
 
-  constructor(
-    public width: number = 600,
-    public height: number = 400,
-    public padding: number = 60,
-    public backgroundColor: string = "#ffffff",
-    public defaultColor: string = "#0074d9"
-  ) {}
+  constructor(config: ReplotConfig = {}) {
+    this.width = config.width ?? 600;
+    this.height = config.height ?? 400;
+    this.padding = config.padding ?? 50;
+    this.strokeColor = config.strokeColor ?? "#0074d9";
+    this.strokeWidth = config.strokeWidth ?? 2;
+    this.backgroundColor = config.backgroundColor ?? "#ffffff";
+    this.showGrid = config.showGrid ?? true;
+    this.showAxes = config.showAxes ?? true;
+    this.title = config.title;
+    this.xLabel = config.xLabel;
+    this.yLabel = config.yLabel;
+  }
 
-  addPlot(type: PlotType, points: Point[], options: {
-    color?: string;
-    width?: number;
-    label?: string;
-    fill?: string;
-    opacity?: number;
-  } = {}) {
+  addPlot(type: PlotType, points: Point[], style?: PlotStyle, label?: string): number {
     if (points.length === 0) {
-      console.warn("Cannot add plot with empty points array");
-      return -1;
+      throw new Error("Cannot add plot with empty points array");
     }
-
-    const plot: Plot = {
-      type,
-      points,
-      color: options.color || this.defaultColor,
-      width: options.width || 2,
-      label: options.label,
-      fill: options.fill || (type === "bar" ? options.color || this.defaultColor : "none"),
-      opacity: options.opacity || 1
-    };
-
-    return this.plots.push(plot);
-  }
-
-  setTitle(title: string) {
-    this.title = title;
-  }
-
-  setXAxis(config: Partial<AxisConfig>) {
-    this.xAxis = { ...this.xAxis, ...config };
-  }
-
-  setYAxis(config: Partial<AxisConfig>) {
-    this.yAxis = { ...this.yAxis, ...config };
+    return this.plots.push({ type, points, style, label });
   }
 
   plot(): string {
     if (this.plots.length === 0) {
-      return this.createEmptySVG();
+      return this.emptyPlot();
     }
 
-    const { minX, maxX, minY, maxY } = this.calculateBounds();
-    const xRange = maxX - minX || 1; // Avoid division by zero
-    const yRange = maxY - minY || 1;
+    const bounds = this.calculateBounds();
+    const plotArea = this.getPlotArea();
 
-    const svgParts: string[] = [
-      this.createBackground(),
-      this.createGrid(minX, maxX, minY, maxY, xRange, yRange),
-      ...this.plots.map(plot => this.renderPlot(plot, minX, maxX, minY, maxY, xRange, yRange)),
-      this.createAxes(minX, maxX, minY, maxY, xRange, yRange),
-      this.createTitle()
-    ];
-
-    return this.createSVGWrapper(svgParts.join('\n'));
+    const svg = `
+      <svg viewBox="0 0 ${this.width} ${this.height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${this.width}" height="${this.height}" fill="${this.backgroundColor}"/>
+        ${this.title ? this.renderTitle() : ""}
+        ${this.showGrid ? this.renderGrid(bounds, plotArea) : ""}
+        ${this.showAxes ? this.renderAxes(bounds, plotArea) : ""}
+        <g clip-path="url(#plot-area)">
+          <clipPath id="plot-area">
+            <rect x="${plotArea.x}" y="${plotArea.y}" width="${plotArea.width}" height="${plotArea.height}"/>
+          </clipPath>
+          ${this.plots.map((plt) => this.renderPlot(plt, bounds, plotArea)).join("")}
+        </g>
+        ${this.xLabel ? this.renderXLabel() : ""}
+        ${this.yLabel ? this.renderYLabel() : ""}
+        ${this.renderLegend()}
+      </svg>
+    `;
+    return svg;
   }
 
-  private calculateBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  private emptyPlot(): string {
+    return `
+      <svg viewBox="0 0 ${this.width} ${this.height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${this.width}" height="${this.height}" fill="${this.backgroundColor}"/>
+        <text x="${this.width / 2}" y="${this.height / 2}" text-anchor="middle" fill="#666">
+          No data to display
+        </text>
+      </svg>
+    `;
+  }
 
-    this.plots.forEach(plot => {
-      plot.points.forEach(point => {
-        minX = Math.min(minX, point.x);
-        maxX = Math.max(maxX, point.x);
-        minY = Math.min(minY, point.y);
-        maxY = Math.max(maxY, point.y);
-      });
-    });
-
-    // Add some padding to the bounds for better visualization
-    const xPadding = (maxX - minX) * 0.05;
-    const yPadding = (maxY - minY) * 0.05;
-
+  private calculateBounds(): Bounds {
+    const allPoints = this.plots.flatMap((p) => p.points);
+    
     return {
-      minX: minX - xPadding,
-      maxX: maxX + xPadding,
-      minY: minY - yPadding,
-      maxY: maxY + yPadding
+      minX: Math.min(...allPoints.map((p) => p.x)),
+      maxX: Math.max(...allPoints.map((p) => p.x)),
+      minY: Math.min(...allPoints.map((p) => p.y)),
+      maxY: Math.max(...allPoints.map((p) => p.y)),
     };
   }
 
-  private scaleX(x: number, minX: number, xRange: number): number {
-    return this.padding + ((x - minX) / xRange) * (this.width - 2 * this.padding);
+  private getPlotArea() {
+    const topPadding = this.title ? this.padding + 20 : this.padding;
+    return {
+      x: this.padding,
+      y: topPadding,
+      width: this.width - 2 * this.padding,
+      height: this.height - topPadding - this.padding,
+    };
   }
 
-  private scaleY(y: number, minY: number, yRange: number): number {
-    return this.height - this.padding - ((y - minY) / yRange) * (this.height - 2 * this.padding);
+  private scaleX(x: number, bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): number {
+    const range = bounds.maxX - bounds.minX || 1;
+    return plotArea.x + ((x - bounds.minX) / range) * plotArea.width;
   }
 
-  private createSVGWrapper(content: string): string {
-    return `<svg viewBox="0 0 ${this.width} ${this.height}" xmlns="http://www.w3.org/2000/svg">
-${content}
-</svg>`;
+  private scaleY(y: number, bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): number {
+    const range = bounds.maxY - bounds.minY || 1;
+    // Invert Y axis (SVG coordinates are top-down)
+    return plotArea.y + plotArea.height - ((y - bounds.minY) / range) * plotArea.height;
   }
 
-  private createBackground(): string {
-    return `<rect width="100%" height="100%" fill="${this.backgroundColor}" />`;
-  }
-
-  private createGrid(minX: number, maxX: number, minY: number, maxY: number, xRange: number, yRange: number): string {
-    if (!this.xAxis.showGrid && !this.yAxis.showGrid) return '';
-
-    const gridLines: string[] = [];
-    
-    if (this.yAxis.showGrid) {
-      // Vertical grid lines
-      for (let x = Math.ceil(minX); x <= Math.floor(maxX); x++) {
-        const scaledX = this.scaleX(x, minX, xRange);
-        gridLines.push(
-          `<line x1="${scaledX}" y1="${this.padding}" x2="${scaledX}" y2="${this.height - this.padding}" stroke="${this.xAxis.gridColor}" stroke-width="1" stroke-dasharray="2,2" />`
-        );
-      }
-    }
-
-    if (this.xAxis.showGrid) {
-      // Horizontal grid lines
-      for (let y = Math.ceil(minY); y <= Math.floor(maxY); y++) {
-        const scaledY = this.scaleY(y, minY, yRange);
-        gridLines.push(
-          `<line x1="${this.padding}" y1="${scaledY}" x2="${this.width - this.padding}" y2="${scaledY}" stroke="${this.yAxis.gridColor}" stroke-width="1" stroke-dasharray="2,2" />`
-        );
-      }
-    }
-
-    return gridLines.join('\n');
-  }
-
-  private createAxes(minX: number, maxX: number, minY: number, maxY: number, xRange: number, yRange: number): string {
-    const axes: string[] = [];
-
-    // X-axis
-    const xAxisY = this.scaleY(0, minY, yRange);
-    axes.push(
-      `<line x1="${this.padding}" y1="${xAxisY}" x2="${this.width - this.padding}" y2="${xAxisY}" stroke="#000" stroke-width="2" />`
-    );
-
-    // Y-axis
-    const yAxisX = this.scaleX(0, minX, xRange);
-    axes.push(
-      `<line x1="${yAxisX}" y1="${this.padding}" x2="${yAxisX}" y2="${this.height - this.padding}" stroke="#000" stroke-width="2" />`
-    );
-
-    // Axis labels
-    if (this.xAxis.label) {
-      axes.push(
-        `<text x="${this.width / 2}" y="${this.height - 10}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12">${this.xAxis.label}</text>`
-      );
-    }
-
-    if (this.yAxis.label) {
-      axes.push(
-        `<text x="10" y="${this.height / 2}" text-anchor="middle" transform="rotate(-90, 10, ${this.height / 2})" font-family="Arial, sans-serif" font-size="12">${this.yAxis.label}</text>`
-      );
-    }
-
-    return axes.join('\n');
-  }
-
-  private createTitle(): string {
-    if (!this.title) return '';
-    return `<text x="${this.width / 2}" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold">${this.title}</text>`;
-  }
-
-  private createEmptySVG(): string {
-    return this.createSVGWrapper(`
-      ${this.createBackground()}
-      <text x="${this.width / 2}" y="${this.height / 2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#666">
-        No plots to display
-      </text>
-    `);
-  }
-
-  private renderPlot(plot: Plot, minX: number, maxX: number, minY: number, maxY: number, xRange: number, yRange: number): string {
+  private renderPlot(plot: Plot, bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): string {
     switch (plot.type) {
       case "line":
-        return this.renderLinePlot(plot, minX, maxX, minY, maxY, xRange, yRange);
+        return this.renderLinePlot(plot, bounds, plotArea);
       case "bar":
-        return this.renderBarPlot(plot, minX, maxX, minY, maxY, xRange, yRange);
+        return this.renderBarPlot(plot, bounds, plotArea);
       case "scatter":
-        return this.renderScatterPlot(plot, minX, maxX, minY, maxY, xRange, yRange);
+        return this.renderScatterPlot(plot, bounds, plotArea);
       default:
-        return '';
+        return "";
     }
   }
 
-  private renderLinePlot(plot: Plot, minX: number, maxX: number, minY: number, maxY: number, xRange: number, yRange: number): string {
-    const points = plot.points.map(p => 
-      `${this.scaleX(p.x, minX, xRange)},${this.scaleY(p.y, minY, yRange)}`
-    ).join(' ');
+  private renderLinePlot(plot: Plot, bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): string {
+    const strokeColor = plot.style?.strokeColor ?? this.strokeColor;
+    const strokeWidth = plot.style?.strokeWidth ?? this.strokeWidth;
+    
+    const points = plot.points
+      .map((p) => `${this.scaleX(p.x, bounds, plotArea)},${this.scaleY(p.y, bounds, plotArea)}`)
+      .join(" ");
 
     return `<polyline 
       fill="none" 
-      stroke="${plot.color}" 
-      stroke-width="${plot.width}" 
-      stroke-opacity="${plot.opacity}"
+      stroke="${strokeColor}" 
+      stroke-width="${strokeWidth}" 
       points="${points}"
     />`;
   }
 
-  private renderBarPlot(plot: Plot, minX: number, maxX: number, minY: number, maxY: number, xRange: number, yRange: number): string {
-    const barWidth = (this.width - 2 * this.padding) / plot.points.length * 0.8;
-    const zeroY = this.scaleY(0, minY, yRange);
+  private renderBarPlot(plot: Plot, bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): string {
+    const fillColor = plot.style?.fillColor ?? plot.style?.strokeColor ?? this.strokeColor;
+    const strokeColor = plot.style?.strokeColor ?? this.strokeColor;
+    const barWidth = plotArea.width / (plot.points.length * 2);
 
-    return plot.points.map((point, index) => {
-      const x = this.scaleX(point.x, minX, xRange) - barWidth / 2;
-      const y = this.scaleY(point.y, minY, yRange);
-      const height = Math.abs(zeroY - y);
-      const barY = point.y >= 0 ? y : zeroY;
+    return plot.points
+      .map((p) => {
+        const x = this.scaleX(p.x, bounds, plotArea) - barWidth / 2;
+        const y = this.scaleY(p.y, bounds, plotArea);
+        const baseY = this.scaleY(0, bounds, plotArea);
+        const height = Math.abs(baseY - y);
 
-      return `<rect 
-        x="${x}" 
-        y="${barY}" 
-        width="${barWidth}" 
-        height="${height}"
-        fill="${plot.fill}" 
-        fill-opacity="${plot.opacity}"
-        stroke="${plot.color}" 
-        stroke-width="1"
-      />`;
-    }).join('\n');
+        return `<rect 
+          x="${x}" 
+          y="${Math.min(y, baseY)}" 
+          width="${barWidth}" 
+          height="${height}" 
+          fill="${fillColor}" 
+          stroke="${strokeColor}" 
+          stroke-width="1"
+        />`;
+      })
+      .join("");
   }
 
-  private renderScatterPlot(plot: Plot, minX: number, maxX: number, minY: number, maxY: number, xRange: number, yRange: number): string {
-    return plot.points.map(point => {
-      const cx = this.scaleX(point.x, minX, xRange);
-      const cy = this.scaleY(point.y, minY, yRange);
-      const radius = plot.width || 3;
+  private renderScatterPlot(plot: Plot, bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): string {
+    const fillColor = plot.style?.fillColor ?? plot.style?.strokeColor ?? this.strokeColor;
+    const radius = plot.style?.pointRadius ?? 3;
 
-      return `<circle 
-        cx="${cx}" 
-        cy="${cy}" 
-        r="${radius}" 
-        fill="${plot.color}" 
-        fill-opacity="${plot.opacity}"
-        stroke="${plot.color}" 
-        stroke-width="1"
-      />`;
-    }).join('\n');
+    return plot.points
+      .map((p) => {
+        const cx = this.scaleX(p.x, bounds, plotArea);
+        const cy = this.scaleY(p.y, bounds, plotArea);
+        return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fillColor}"/>`;
+      })
+      .join("");
+  }
+
+  private renderGrid(bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): string {
+    const gridLines: string[] = [];
+    const gridColor = "#e0e0e0";
+    const numLines = 5;
+
+    // Vertical grid lines
+    for (let i = 0; i <= numLines; i++) {
+      const x = plotArea.x + (i * plotArea.width) / numLines;
+      gridLines.push(
+        `<line x1="${x}" y1="${plotArea.y}" x2="${x}" y2="${plotArea.y + plotArea.height}" 
+          stroke="${gridColor}" stroke-width="1"/>`
+      );
+    }
+
+    // Horizontal grid lines
+    for (let i = 0; i <= numLines; i++) {
+      const y = plotArea.y + (i * plotArea.height) / numLines;
+      gridLines.push(
+        `<line x1="${plotArea.x}" y1="${y}" x2="${plotArea.x + plotArea.width}" y2="${y}" 
+          stroke="${gridColor}" stroke-width="1"/>`
+      );
+    }
+
+    return gridLines.join("");
+  }
+
+  private renderAxes(bounds: Bounds, plotArea: ReturnType<typeof this.getPlotArea>): string {
+    const axisColor = "#333";
+    const tickSize = 5;
+    const numTicks = 5;
+    const elements: string[] = [];
+
+    // X-axis
+    elements.push(
+      `<line x1="${plotArea.x}" y1="${plotArea.y + plotArea.height}" 
+        x2="${plotArea.x + plotArea.width}" y2="${plotArea.y + plotArea.height}" 
+        stroke="${axisColor}" stroke-width="2"/>`
+    );
+
+    // Y-axis
+    elements.push(
+      `<line x1="${plotArea.x}" y1="${plotArea.y}" 
+        x2="${plotArea.x}" y2="${plotArea.y + plotArea.height}" 
+        stroke="${axisColor}" stroke-width="2"/>`
+    );
+
+    // X-axis ticks and labels
+    for (let i = 0; i <= numTicks; i++) {
+      const x = plotArea.x + (i * plotArea.width) / numTicks;
+      const value = bounds.minX + (i * (bounds.maxX - bounds.minX)) / numTicks;
+      
+      elements.push(
+        `<line x1="${x}" y1="${plotArea.y + plotArea.height}" 
+          x2="${x}" y2="${plotArea.y + plotArea.height + tickSize}" 
+          stroke="${axisColor}" stroke-width="1"/>`
+      );
+      
+      elements.push(
+        `<text x="${x}" y="${plotArea.y + plotArea.height + 20}" 
+          text-anchor="middle" font-size="12" fill="${axisColor}">
+          ${value.toFixed(1)}
+        </text>`
+      );
+    }
+
+    // Y-axis ticks and labels
+    for (let i = 0; i <= numTicks; i++) {
+      const y = plotArea.y + plotArea.height - (i * plotArea.height) / numTicks;
+      const value = bounds.minY + (i * (bounds.maxY - bounds.minY)) / numTicks;
+      
+      elements.push(
+        `<line x1="${plotArea.x - tickSize}" y1="${y}" 
+          x2="${plotArea.x}" y2="${y}" 
+          stroke="${axisColor}" stroke-width="1"/>`
+      );
+      
+      elements.push(
+        `<text x="${plotArea.x - 10}" y="${y + 4}" 
+          text-anchor="end" font-size="12" fill="${axisColor}">
+          ${value.toFixed(1)}
+        </text>`
+      );
+    }
+
+    return elements.join("");
+  }
+
+  private renderTitle(): string {
+    return `<text x="${this.width / 2}" y="25" text-anchor="middle" font-size="18" font-weight="bold" fill="#333">
+      ${this.title}
+    </text>`;
+  }
+
+  private renderXLabel(): string {
+    return `<text x="${this.width / 2}" y="${this.height - 10}" text-anchor="middle" font-size="14" fill="#333">
+      ${this.xLabel}
+    </text>`;
+  }
+
+  private renderYLabel(): string {
+    return `<text x="15" y="${this.height / 2}" text-anchor="middle" font-size="14" fill="#333" 
+      transform="rotate(-90 15 ${this.height / 2})">
+      ${this.yLabel}
+    </text>`;
+  }
+
+  private renderLegend(): string {
+    const plotsWithLabels = this.plots.filter((p) => p.label);
+    if (plotsWithLabels.length === 0) return "";
+
+    const legendX = this.width - this.padding - 120;
+    const legendY = this.padding + (this.title ? 20 : 0);
+    const lineHeight = 20;
+
+    const items = plotsWithLabels.map((plot, i) => {
+      const y = legendY + i * lineHeight;
+      const color = plot.style?.strokeColor ?? plot.style?.fillColor ?? this.strokeColor;
+      
+      return `
+        <rect x="${legendX}" y="${y}" width="15" height="3" fill="${color}"/>
+        <text x="${legendX + 20}" y="${y + 4}" font-size="12" fill="#333">${plot.label}</text>
+      `;
+    });
+
+    return `<g class="legend">${items.join("")}</g>`;
   }
 
   // Utility method to clear all plots
-  clear() {
+  clear(): void {
     this.plots = [];
-    this.title = "";
-  }
-
-  // Method to get current plot count
-  getPlotCount(): number {
-    return this.plots.length;
   }
 }
-
-// Example usage:
-/*
-const plotter = new Replot(800, 600, 80, "#f8f9fa", "#0074d9");
-
-// Configure axes
-plotter.setXAxis({ label: "X Values", showGrid: true });
-plotter.setYAxis({ label: "Y Values", showGrid: true });
-plotter.setTitle("Sample Plot");
-
-// Add some data
-const lineData = [
-  { x: 0, y: 0 },
-  { x: 1, y: 2 },
-  { x: 2, y: 1 },
-  { x: 3, y: 4 },
-  { x: 4, y: 3 }
-];
-
-const barData = [
-  { x: 0.5, y: 1 },
-  { x: 1.5, y: 3 },
-  { x: 2.5, y: 2 },
-  { x: 3.5, y: 5 }
-];
-
-plotter.addPlot("line", lineData, { color: "#0074d9", width: 3, label: "Line Series" });
-plotter.addPlot("bar", barData, { color: "#ff4136", fill: "#ff4136", opacity: 0.7, label: "Bar Series" });
-
-const svg = plotter.plot();
-*/
