@@ -108,8 +108,8 @@ export const ShaderCode = {
   `,
 
   mul: /* wgsl */`
-    @group(0) @binding(0) var<storage, read_write> a: array<f32>;
-    @group(0) @binding(1) var<storage, read_write> b: array<f32>;
+    @group(0) @binding(0) var<storage, read> a: array<f32>;
+    @group(0) @binding(1) var<storage, read> b: array<f32>;
     @group(0) @binding(2) var<storage, read_write> out: array<f32>;
     @group(0) @binding(3) var<uniform> n: u32;
     
@@ -188,19 +188,7 @@ export const ShaderCode = {
     }
   `,
 
-  /** Compute the mean of a tensor. I unfortunately did not use this shader yet */
-  mean: /* wgsl */`
-    @group(0) @binding(0) var<storage, read> a: array<f32>;
-    @group(0) @binding(1) var<storage, read_write> out: array<atomic<f32>>;
-    @group(0) @binding(2) var<uniform> n: u32; // number of elements
 
-    @compute @workgroup_size(256, 1, 1)
-    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-      let i: u32 = gid.x;
-      if (i >= n) { return; }
-      atomicAdd(&out[0], a[i] / f32(n));
-    }
-  `,
 
   pow: /* wgsl */`
     @group(0) @binding(0) var<storage, read> a: array<f32>;
@@ -252,6 +240,127 @@ export const ShaderCode = {
       let e_pos: f32 = exp_approx(a[i]);
       let e_neg: f32 = exp_approx(-a[i]);
       out[i] = (e_pos - e_neg) / (e_pos + e_neg);
+    }
+  `,
+
+  /**
+   * SGD step: param = param - lr * grad
+   */
+  sgd_step: /* wgsl */ `
+    @group(0) @binding(0) var<storage, read_write> param: array<f32>;
+    @group(0) @binding(1) var<storage, read> grad: array<f32>;
+    @group(0) @binding(2) var<uniform> lr: f32;
+    @group(0) @binding(3) var<uniform> n: u32;
+
+    @compute @workgroup_size(256, 1, 1)
+    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let i: u32 = gid.x;
+      if (i >= n) { return; }
+      param[i] = param[i] - lr * grad[i];
+    }
+  `,
+
+  sgd_momentum: /* wgsl */ `
+    @group(0) @binding(0) var<storage, read_write> param: array<f32>;
+    @group(0) @binding(1) var<storage, read> grad: array<f32>;
+    @group(0) @binding(2) var<storage, read_write> velocity: array<f32>;
+    @group(0) @binding(3) var<uniform> lr: f32;
+    @group(0) @binding(4) var<uniform> momentum: f32;
+    @group(0) @binding(5) var<uniform> n: u32;
+
+    @compute @workgroup_size(256, 1, 1)
+    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let i: u32 = gid.x;
+      if (i >= n) { return; }
+      velocity[i] = momentum * velocity[i] + grad[i];
+      param[i] = param[i] - lr * velocity[i];
+    }
+  `,
+
+  /**
+   * Transpose a tensor data
+   */
+  transpose: /* wgsl */ `
+    @group(0) @binding(0) var<storage, read> a: array<f32>;
+    @group(0) @binding(1) var<storage, read_write> out: array<f32>;
+    @group(0) @binding(2) var<uniform> params: vec2<u32>; // rows, cols
+  
+    @compute @workgroup_size(16, 16, 1)
+    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let row = gid.x;
+        let col = gid.y;
+        let rows = params.x;
+        let cols = params.y;
+    
+        if (row >= rows || col >= cols) {
+            return;
+        }
+    
+        let a_index = row * cols + col;
+        let out_index = col * rows + row;
+        out[out_index] = a[a_index];
+    }
+  `,
+
+  relu_backward: /* wgsl */ `
+  @group(0) @binding(0) var<storage, read> out_grad: array<f32>;
+  @group(0) @binding(1) var<storage, read> a: array<f32>;
+  @group(0) @binding(2) var<storage, read_write> a_grad: array<f32>;
+  @group(0) @binding(3) var<uniform> n: u32;
+
+  @compute @workgroup_size(256, 1, 1)
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= n) { return; }
+
+    if (a[i] > 0.0) {
+      a_grad[i] = out_grad[i];
+    } else {
+      a_grad[i] = 0.0;
+    }
+  }
+  `,
+
+  broadcast: /* wgsl */ `
+    @group(0) @binding(0) var<storage, read> a: array<f32>;
+    @group(0) @binding(1) var<storage, read_write> out: array<f32>;
+    @group(0) @binding(2) var<uniform> n: u32;
+
+    @compute @workgroup_size(256, 1, 1)
+    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let i = gid.x;
+        if (i >= n) { return; }
+        out[i] = a[0];
+    }
+  `,
+
+  fill: /* wgsl */ `
+    @group(0) @binding(0) var<storage, read_write> out: array<f32>;
+    @group(0) @binding(1) var<uniform> value: f32;
+    @group(0) @binding(2) var<uniform> n: u32;
+
+    @compute @workgroup_size(256, 1, 1)
+    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let i = gid.x;
+        if (i >= n) { return; }
+        out[i] = value;
+    }
+  `,
+
+  sigmoid_backward: /* wgsl */ `
+    @group(0) @binding(0) var<storage, read> out_grad: array<f32>;
+    @group(0) @binding(1) var<storage, read> out: array<f32>;
+    @group(0) @binding(2) var<storage, read_write> a_grad: array<f32>;
+    @group(0) @binding(3) var<uniform> n: u32;
+
+    @compute @workgroup_size(256, 1, 1)
+    fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+        let i = gid.x;
+        if (i >= n) { return; }
+
+        let sigmoid_out = out[i];
+        let sigmoid_derivative = sigmoid_out * (1.0 - sigmoid_out);
+        a_grad[i] = out_grad[i] * sigmoid_derivative;
     }
   `,
 }
