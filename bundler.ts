@@ -8,6 +8,7 @@ type FileContent = {
 function readCode(code: string): FileContent {
   const importRegex = /import\s+(?:\w+|{\s*[^}]+\s*})\s+from\s+['"]([^'"]+)['"]\s*;?/g;
   const exportFromRegex = /export\s+(?:\*|{\s*[^}]+\s*})\s+from\s+['"]([^'"]+)['"]\s*;?/g;
+  const exportAllFromRegex = /export\s+\*\s+from\s+['"]([^'"]+)['"]\s*;?/g;
   const imports = [];
   let match;
 
@@ -19,9 +20,13 @@ function readCode(code: string): FileContent {
     imports.push(match[1]);
   }
 
+  while ((match = exportAllFromRegex.exec(code))) {
+    imports.push(match[1]);
+  }
+
   return {
     imports,
-    code: code.replace(importRegex, "").replace(exportFromRegex, "").trim()
+    code: code.replace(importRegex, "").replace(exportFromRegex, "").replace(exportAllFromRegex, "").trim()
   };
 }
 
