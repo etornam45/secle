@@ -46,12 +46,12 @@ function create_data(start: number, end: number, num_points: number): { x: nn.Te
 }
 
 
-const data = create_data(-10, 10, 500);
+const data = create_data(-10, 10, 50);
 
 console.log(data[0].x.shape);
 console.log(data[0].y.shape);
 
-const device: nn.Device = "webgpu"
+const device: nn.Device = "cpu"
 const model = new Model(1, 1, 1000);
 await model.to(device)
 const optimizer = new SGD(model.parameters, 0.000001);
