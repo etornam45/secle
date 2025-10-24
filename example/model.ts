@@ -4,14 +4,23 @@ import { SGD } from "../core/optim.ts";
 class Model extends nn.Module {
   seq: nn.Sequencial;
   
-
   constructor(input_size: number, output_size: number, hidden_dim = 10) {
     super();
     this.seq = new nn.Sequencial([
       new nn.Linear(input_size, hidden_dim),
-      new nn.Relu(),
+      new nn.Sigmoid(),
+      // new nn.Linear(hidden_dim, hidden_dim),
+      // new nn.Sigmoid(),
+      // new nn.Linear(hidden_dim, hidden_dim),
+      // new nn.Sigmoid(),
+      // new nn.Linear(hidden_dim, hidden_dim),
+      // new nn.Sigmoid(),
+      // new nn.Linear(hidden_dim, hidden_dim),
+      // new nn.Sigmoid(),
       new nn.Linear(hidden_dim, hidden_dim),
-      new nn.Relu(),
+      new nn.Sigmoid(),
+      new nn.Linear(hidden_dim, hidden_dim),
+      new nn.Sigmoid(),
       new nn.Linear(hidden_dim, output_size)
     ])
     this.register_parameters([this.seq]);
@@ -37,45 +46,44 @@ function create_data(start: number, end: number, num_points: number): { x: nn.Te
 }
 
 
-const data = create_data(-10, 10, 100);
+const data = create_data(-10, 10, 500);
 
 console.log(data[0].x.shape);
 console.log(data[0].y.shape);
 
-const model = new Model(1, 1);
-const optimizer = new SGD(model.parameters, 0.001);
+const device: nn.Device = "webgpu"
+const model = new Model(1, 1, 1000);
+await model.to(device)
+const optimizer = new SGD(model.parameters, 0.000001);
 const criterion = nn.MSELoss()
-let old_parameters = snapshot_params(model.parameters);
 
-for (let i = 0; i < 100; i++) {
-  let epoch_loss: number[] = [];
+
+console.log("Training started...on ", device);
+let total_losses: number[] = [];
+for (let i = 0; i < 10; i++) {
+  const start = performance.now();
+  let total_loss = nn.Tensor.zeros([1, 1], false, device);
   for (const { x, y } of data) {
+    await x.to(device)
+    await y.to(device)
     const output = model.$(x);
     const loss = criterion(output, y);
+    total_loss = nn.add(total_loss, loss) as nn.Tensor;
     loss.backward();
     optimizer.step();
-    epoch_loss.push(loss.data[0]);
+    // epoch_loss.push(los_val);
     optimizer.zero_grad();
   }
-  const param_diff = param_diff_from_snapshot(old_parameters, model.parameters);
-  old_parameters = snapshot_params(model.parameters);
-  console.log("Param diff:", param_diff);
-  console.log("Epoch loss:", epoch_loss.reduce((a, b) => a + b, 0) / epoch_loss.length);
-  epoch_loss = [];
-}
-
-function param_diff_from_snapshot(before: Float32Array[], params: nn.Tensor[]): number {
-  let diff = 0;
-  for (let i = 0; i < params.length; i++) {
-    const a = before[i];
-    const b = params[i].data;
-    let d = 0;
-    for (let j = 0; j < a.length; j++) d += (a[j] - b[j]) ** 2;
-    diff += d;
+  let los_val: number
+  if (total_loss.device === "webgpu") {
+    los_val = (await nn.WebGPU.readTensorData(total_loss))[0]
+  } else {
+    los_val = total_loss.data[0]
   }
-  return diff;
+  console.log(`Epoch loss: ${i + 1}/${10}`, los_val / data.length);
+  total_losses.push(los_val)
+  const end = performance.now();
+  console.log(`Epoch Time taken: ${end - start} milliseconds`);
 }
-
-function snapshot_params(params: nn.Tensor[]): Float32Array[] {
-  return params.map(p => Float32Array.from(p.data));
-}
+console.log("Total loss:", total_losses.reduce((a, b) => a + b, 0));
+console.log("Parameters:", model.parameters_count);
