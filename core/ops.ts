@@ -1,11 +1,16 @@
 import { Tensor } from "./tensor.ts";
 import { CPU } from "./backends/cpu.ts";
+import { WebGPU } from "./backends/webgpu.ts";
 
 export function matmul(a: Tensor, b: Tensor): Tensor {
-  const out = CPU.matmul(a, b);
+  const device = a.device;
+  if (a.device !== b.device) {
+    throw new Error(`Tensors must be on the same device for matmul. Got ${a.device} and ${b.device}`);
+  }
+  const out = device === "webgpu" ? WebGPU.matmul(a, b) : CPU.matmul(a, b);
   out._prev = [a, b];
   out.requires_grad = a.requires_grad || b.requires_grad; // Set requires_grad based on inputs
-
+  out.device = device;
   out._backward = () => {
     if (!out._grad) return;
 
@@ -24,9 +29,14 @@ export function matmul(a: Tensor, b: Tensor): Tensor {
 }
 
 export function sub(a: Tensor, b: Tensor): Tensor {
-  const out = CPU.sub(a, b);
+  const device = a.device;
+  if (a.device !== b.device) {
+    throw new Error(`Tensors must be on the same device for matmul. Got ${a.device} and ${b.device}`);
+  }
+  const out = device === "webgpu" ? WebGPU.sub(a, b) : CPU.sub(a, b);
   out._prev = [a, b];
   out.requires_grad = a.requires_grad || b.requires_grad;
+  out.device = device;
 
   out._backward = () => {
     if (!out._grad) return;
@@ -43,9 +53,11 @@ export function sub(a: Tensor, b: Tensor): Tensor {
 }
 
 export function neg(a: Tensor): Tensor {
-  const out = CPU.neg(a);
+  const device = a.device;
+  const out = device === "webgpu" ? WebGPU.neg(a) : CPU.neg(a);
   out._prev = [a];
   out.requires_grad = a.requires_grad;
+  out.device = device;
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
@@ -59,9 +71,12 @@ export function neg(a: Tensor): Tensor {
 export function mul(a: Tensor | number, b: Tensor | number): Tensor {
 
   if (typeof a === "number" && b instanceof Tensor) {
-    const out = CPU.mul_scalar(b, a);
+    const device = b.device;
+    // Whatever, multiplication is commutative
+    const out = device === "webgpu" ? WebGPU.mul_scalar(b, a) : CPU.mul_scalar(b, a);
     out._prev = [b];
     out.requires_grad = b.requires_grad;
+    out.device = device;
     out._backward = () => {
       if (!out._grad) return;
       if (b.requires_grad) {
@@ -72,9 +87,11 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
     return out;
   }
   if (typeof b === "number" && a instanceof Tensor) {
-    const out = CPU.mul_scalar(a, b);
+    const device = a.device;
+    const out = device === "webgpu" ? WebGPU.mul_scalar(a, b) : CPU.mul_scalar(a, b);
     out._prev = [a];
     out.requires_grad = a.requires_grad;
+    out.device = device;
     out._backward = () => {
       if (!out._grad) return;
       if (a.requires_grad) {
@@ -86,10 +103,14 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
   }
 
   if (a instanceof Tensor && b instanceof Tensor) {
-    const out = CPU.mul(a, b);
+    const device = a.device;
+    if (a.device !== b.device) {
+      throw new Error(`Tensors must be on the same device for mul. Got ${a.device} and ${b.device}`);
+    }
+    const out = device === "webgpu" ? WebGPU.mul(a, b) : CPU.mul(a, b);
     out._prev = [a, b];
     out.requires_grad = a.requires_grad || b.requires_grad;
-
+    out.device = device;
     out._backward = () => {
       if (!out._grad) return;
       if (a.requires_grad) {
@@ -114,9 +135,11 @@ export function mul(a: Tensor | number, b: Tensor | number): Tensor {
 
 export function add(a: Tensor | number, b: Tensor | number): Tensor {
   if (typeof a === "number" && b instanceof Tensor) {
-    const out = CPU.add_a_number(b, a);
+    const device = b.device;
+    const out = device === "webgpu" ? WebGPU.add_a_number(b, a) : CPU.add_a_number(b, a);
     out._prev = [b];
     out.requires_grad = b.requires_grad;
+    out.device = device;
     out._backward = () => {
       if (!out._grad) return;
       if (b.requires_grad) {
@@ -126,9 +149,11 @@ export function add(a: Tensor | number, b: Tensor | number): Tensor {
     return out;
   }
   if (typeof b === "number" && a instanceof Tensor) {
-    const out = CPU.add_a_number(a, b);
+    const device = a.device;
+    const out = device === "webgpu" ? WebGPU.add_a_number(a, b) : CPU.add_a_number(a, b);
     out._prev = [a];
     out.requires_grad = a.requires_grad;
+    out.device = device;
     out._backward = () => {
       if (!out._grad) return;
       if (a.requires_grad) {
@@ -139,9 +164,14 @@ export function add(a: Tensor | number, b: Tensor | number): Tensor {
   }
 
   if (a instanceof Tensor && b instanceof Tensor) {
-    const out = CPU.add(a, b);
+    const device = a.device;
+    if (a.device !== b.device) {
+      throw new Error(`Tensors must be on the same device for add. Got ${a.device} and ${b.device}`);
+    }
+    const out = device === "webgpu" ? WebGPU.add(a, b) : CPU.add(a, b);
     out._prev = [a, b];
     out.requires_grad = a.requires_grad || b.requires_grad;
+    out.device = device;
 
     out._backward = () => {
       if (!out._grad) return;
@@ -165,20 +195,26 @@ export function add(a: Tensor | number, b: Tensor | number): Tensor {
 
 
 export function mean(a: Tensor): Tensor {
-  const out = CPU.mean(a);
+  const device = a.device;
+  const out = device === "webgpu" ? WebGPU.mean(a) : CPU.mean(a);
   out._prev = [a];
   out.requires_grad = a.requires_grad;
+  out.device = device;
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
       // d mean / d a_i = 1/N
       const scale = 1 / a.size();
       const scaled = mul(out._grad, scale);
-      const gradBroadcast = new Tensor(
-        new Float32Array(a.size()).fill(scaled.data[0]),
-        a.shape,
-        a.requires_grad,
-      );
+      scaled.to(device)
+      const gradBroadcast = device === "webgpu"
+        ? WebGPU.broadcast(scaled, a.shape) // I'm Yet to fully understand what I'm doing here
+        : new Tensor(
+          new Float32Array(a.size()).fill(scaled.data[0]),
+          a.shape,
+          a.requires_grad,
+        );
+      gradBroadcast.to(device);
       a._grad = a._grad ? add(a._grad, gradBroadcast) : gradBroadcast;
     }
   };
@@ -186,14 +222,16 @@ export function mean(a: Tensor): Tensor {
 }
 
 export function pow(a: Tensor, b: number): Tensor {
-  const out = CPU.pow(a, b);
+  const device = a.device;
+  const out = device === "webgpu" ? WebGPU.pow(a, b) : CPU.pow(a, b);
   out._prev = [a];
   out.requires_grad = a.requires_grad;
+  out.device = device;
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
       // d (a^b) / d a = b * a^(b-1)
-      const local = mul(CPU.pow(a, b - 1), b);
+      const local = mul(device === "webgpu" ? WebGPU.pow(a, b - 1) : CPU.pow(a, b - 1), b);
       const grad = mul(out._grad, local);
       a._grad = a._grad ? add(a._grad, grad) : grad;
     }
@@ -202,18 +240,22 @@ export function pow(a: Tensor, b: number): Tensor {
 }
 
 export function sum(a: Tensor): Tensor {
-  const out = CPU.sum(a);
+  const device = a.device;
+  const out = device === "webgpu" ? WebGPU.sum(a) : CPU.sum(a);
   out._prev = [a];
   out.requires_grad = a.requires_grad;
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
       // d sum / d a_i = 1
-      const gradBroadcast = new Tensor(
-        new Float32Array(a.size()).fill(out._grad.data[0]),
-        a.shape,
-        a.requires_grad,
-      );
+      const gradBroadcast = device === "webgpu"
+        ? WebGPU.broadcast(out._grad, a.shape) // I'm Yet to fully understand what I'm doing here
+        : new Tensor(
+          new Float32Array(a.size()).fill(out._grad.data[0]),
+          a.shape,
+          a.requires_grad,
+        );
+      gradBroadcast.to(device);
       a._grad = a._grad ? add(a._grad, gradBroadcast) : gradBroadcast;
     }
   };
@@ -222,19 +264,22 @@ export function sum(a: Tensor): Tensor {
 
 
 export function relu(a: Tensor): Tensor {
-  const out = CPU.relu(a);
+  const device = a.device;
+  const out = device === "webgpu" ? WebGPU.relu(a) : CPU.relu(a);
   out._prev = [a];
   out.requires_grad = a.requires_grad;
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
       // ReLU gradient: 1 if input > 0, 0 otherwise
-      const mask = new Tensor(
-        new Float32Array(a.data.map(x => x > 0 ? 1 : 0)),
-        a.shape,
-        a.requires_grad
-      );
-      const a_grad = mul(out._grad, mask);
+      const a_grad = device === "webgpu"
+        ? WebGPU.relu_backward(out._grad, a)
+        : mul(out._grad, new Tensor(
+          new Float32Array(a.data.map(x => x > 0 ? 1 : 0)),
+          a.shape,
+          a.requires_grad
+        ));
+      a_grad.to(device);
       a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
     }
   };
@@ -242,16 +287,21 @@ export function relu(a: Tensor): Tensor {
 }
 
 export function sigmoid(a: Tensor): Tensor {
-  const out = CPU.sigmoid(a);
+  const device = a.device;
+  const out = device === "webgpu" ? WebGPU.sigmoid(a) : CPU.sigmoid(a);
   out._prev = [a];
   out.requires_grad = a.requires_grad;
   out._backward = () => {
     if (!out._grad) return;
     if (a.requires_grad) {
       // Sigmoid gradient: σ(x) * (1 - σ(x)) * out_grad
-      const ones = Tensor.ones(out.shape, out.requires_grad);
-      const sigmoid_derivative = mul(out, sub(ones, out));
-      const a_grad = mul(out._grad, sigmoid_derivative);
+      const a_grad = device === "webgpu"
+        ? WebGPU.sigmoid_backward(out._grad, out)
+        : (() => {
+          const ones = Tensor.ones(out.shape, false, out.device);
+          const sigmoid_derivative = mul(out, sub(ones, out));
+          return mul(out._grad, sigmoid_derivative);
+        })();
       a._grad = a._grad ? add(a._grad, a_grad) : a_grad;
     }
   };
