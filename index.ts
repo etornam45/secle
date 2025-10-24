@@ -4,10 +4,11 @@
  *  License: MIT
  */
 
-
-export { Tensor } from "./core/tensor.ts"
+export { WebGPU } from "./core/backends/webgpu.ts";
+export { CPU } from "./core/backends/cpu.ts";
+export * from "./core/tensor.ts"
 export * from "./core/modules/index.ts"
 export * from "./core/ops.ts";
-export * as plot from "./plot.ts"
+export * from "./plot.ts"
 export { MSELoss } from "./core/loss.ts"
 export { SGD, type Optimizer } from "./core/optim.ts";

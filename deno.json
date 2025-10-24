@@ -1,7 +1,8 @@
 {
   "tasks": {
     "dev": "deno run --watch index.ts",
-    "bundle": "deno --allow-read --allow-write bundler.ts"
+    "bundle": "deno --allow-read --allow-write bundler.ts",
+    "test": "deno test --unstable"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1"
