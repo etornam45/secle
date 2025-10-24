@@ -1,4 +1,4 @@
-import { Tensor } from "../tensor.ts";
+import { Device, initDevice, Tensor } from "../tensor.ts";
 
 export class Module {
   _name?: string;
@@ -75,5 +75,16 @@ export class Module {
 
   get parameters_count(): number {
     return this.parameters.map(p => p.size()).reduce((a, b) => a + b, 0);
+  }
+
+  /**
+   * Move all parameters to the specified device.
+   * @param device - The device to move the parameters to.
+   */
+  async to(device: Device): Promise<void> {
+    await initDevice(device);
+    for (const param of this.parameters) {
+      await param.to(device);
+    }
   }
 }
