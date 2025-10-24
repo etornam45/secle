@@ -1,5 +1,13 @@
+import { WebGPU } from "./backends/webgpu.ts";
+
 export type Shape = number[];
 export type Device = "webgpu" | "cpu"
+
+export async function initDevice(device: Device) {
+  if (device === "webgpu") {
+    await WebGPU.init();
+  }
+}
 
 export class Tensor {
   data: Float32Array;
@@ -113,6 +121,9 @@ export class Tensor {
     if (this.shape.length !== 2) {
       throw new Error("Transpose is only implemented for 2D tensors.");
     }
+    if (this.device === "webgpu") {
+      return WebGPU.transpose(this);
+    }
     const [rows, cols] = this.shape;
     const result = Tensor.zeros([cols, rows], this.requires_grad, this.device);
     for (let i = 0; i < rows; i++) {
@@ -125,13 +136,47 @@ export class Tensor {
 
   zero_grad() {
     if (this._grad) {
-      this._grad.data.fill(0);
-      this._grad = undefined;
+      if (this.device === "webgpu") {
+        WebGPU.fill(this._grad, 0)
+      } else {
+        this._grad.data.fill(0);
+        this._grad = undefined;
+      }
     }
   }
 
   item(): number {
     if (this.data.length !== 1) throw new Error(`Tensor is not scalar. Got Shape(${this.shape}) and Lenght(${this.data.length})`);
     return this.data[0];
+  }
+
+  /**
+   * Move the tensor to the specified device.
+   * This is an idempotent operation.
+   * @param device - The device to move the tensor to.
+   * @returns The tensor on the new device.
+   */
+  async to(device: Device): Promise<Tensor> {
+    if (this.device === device) {
+      return this;
+    }
+
+    if (device === "cpu") {
+      const d = await WebGPU.readTensorData(this)
+      this.data = new Float32Array(d);
+      this._data_buffer = undefined;
+      this._grad_buffer = undefined;
+      this.device = "cpu";
+      return this;
+    }
+
+    if (device === "webgpu") {
+      this._data_buffer = WebGPU.getDataBuffer(this);
+      this._grad_buffer = WebGPU.getGradBuffer(this);
+      this.device = "webgpu";
+      return this;
+    }
+
+    throw new Error(`Device ${device} not supported.`);
   }
 }
