@@ -1,4 +1,8 @@
-## <img src="./assets/sircle.png" width="30" style="margin: 0;" /> Secle - A simple ml framework built for `Typescript`
+<p align="center">
+  <img src="./assets/sircle.png" width="80" style="margin: 0;" />
+</p>
+
+# Secle - A simple ml framework built for `Typescript`
 
 
 
@@ -75,6 +79,6 @@ for (let i = 0; i < 10; i++) {
 > I want to improve the training api to make it more simpler like
 
 ```ts
-model.train(...)
+await model.train(...)
 ```
 
