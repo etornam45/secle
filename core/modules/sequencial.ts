@@ -4,7 +4,7 @@ import { Tensor } from "../tensor.ts";
 export class Sequencial extends Module {
   modules: Module[] = [];
   constructor(modules: Module[]) {
-    super()
+    super(`Sequencial(...)`)
     this.modules = modules
     this.register_parameters(this.modules)
   }

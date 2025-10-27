@@ -5,8 +5,7 @@ import { Tensor } from "../tensor.ts";
 
 export class Sigmoid extends Module {
   constructor() {
-    super()
-    // this.register_parameters()
+    super(`Sigmoid()`)
   }
 
   override forward(_input: Tensor): Tensor {

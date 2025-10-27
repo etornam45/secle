@@ -5,8 +5,7 @@ import { Tensor } from "../tensor.ts";
 
 export class Relu extends Module {
   constructor() {
-    super()
-    // this.register_parameters()
+    super(`Relu()`)
   }
 
   override forward(_input: Tensor): Tensor {
