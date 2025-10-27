@@ -171,6 +171,8 @@ export const WebGPU = {
     passEncoder.end();
     this.getQueue().submit([commandEncoder.finish()]);
 
+    uniform.destroy(); // Destroy the uniform buffer to free memory
+
     return result;
   },
 
@@ -211,6 +213,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -259,6 +262,8 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
+    scalarBuf.destroy();
     return out;
   },
   relu(a: Tensor): Tensor {
@@ -299,6 +304,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -340,6 +346,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -380,6 +387,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -419,7 +427,7 @@ export const WebGPU = {
     pass.dispatchWorkgroups(groups);
     pass.end();
     this.getQueue().submit([encoder.finish()]);
-
+    n.destroy();
     return out;
   },
 
@@ -469,7 +477,8 @@ export const WebGPU = {
     pass.dispatchWorkgroups(groups);
     pass.end();
     this.getQueue().submit([encoder.finish()]);
-
+    scalarBuf.destroy();
+    n.destroy();
     return out;
   },
 
@@ -510,7 +519,7 @@ export const WebGPU = {
     pass.dispatchWorkgroups(groups);
     pass.end();
     this.getQueue().submit([encoder.finish()]);
-
+    n.destroy();
     return out;
   },
 
@@ -551,7 +560,7 @@ export const WebGPU = {
     pass.dispatchWorkgroups(groups);
     pass.end();
     this.getQueue().submit([encoder.finish()]);
-
+    n.destroy();
     return out;
   },
 
@@ -608,6 +617,8 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    powerBuf.destroy();
+    n.destroy();
     return out;
   },
 
@@ -645,6 +656,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -686,6 +698,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -735,6 +748,9 @@ export const WebGPU = {
     pass.dispatchWorkgroups(Math.ceil(parameter.size() / 256));
     pass.end();
     this.getQueue().submit([encoder.finish()]);
+
+    lrBuffer.destroy();
+    nBuffer.destroy();
   },
 
   // SGD with momentum on GPU
@@ -793,6 +809,11 @@ export const WebGPU = {
     pass.dispatchWorkgroups(Math.ceil(parameter.size() / 256));
     pass.end();
     this.getQueue().submit([encoder.finish()]);
+
+    velocity.destroy();
+    lrBuffer.destroy();
+    momentumBuffer.destroy();
+    nBuffer.destroy();
   },
 
   transpose(a: Tensor): Tensor {
@@ -837,6 +858,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    uniform.destroy();
     return out;
   },
 
@@ -880,6 +902,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return a_grad;
   },
 
@@ -920,6 +943,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return out;
   },
 
@@ -962,6 +986,8 @@ export const WebGPU = {
     pass.dispatchWorkgroups(Math.ceil(tensor.size() / 256));
     pass.end();
     this.getQueue().submit([encoder.finish()]);
+    valueBuffer.destroy();
+    n.destroy();
   },
 
   sigmoid_backward(out_grad: Tensor, out: Tensor): Tensor {
@@ -1007,6 +1033,7 @@ export const WebGPU = {
     pass.end();
     this.getQueue().submit([encoder.finish()]);
 
+    n.destroy();
     return a_grad;
   }
 
